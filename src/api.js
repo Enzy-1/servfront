@@ -1,9 +1,7 @@
 const configuredApi = import.meta.env.VITE_API_URL;
-if (import.meta.env.PROD && !configuredApi) {
-  throw new Error('Configura VITE_API_URL con la URL del backend antes de compilar para producción');
-}
+const defaultApi = import.meta.env.PROD ? 'https://servback.vercel.app/api' : '/api';
 
-export const API = (configuredApi || '/api').replace(/\/+$/, '');
+export const API = (configuredApi || defaultApi).replace(/\/+$/, '');
 
 export function getToken() {
   return localStorage.getItem('servtec_token');
