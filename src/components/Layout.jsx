@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { ClipboardPlus, ContactRound, LayoutDashboard, LogOut, PanelLeftClose, PanelLeftOpen, Smartphone, UsersRound } from 'lucide-react'
+import { ClipboardList, ClipboardPlus, ContactRound, LayoutDashboard, LogOut, PanelLeftClose, PanelLeftOpen, Smartphone, UsersRound } from 'lucide-react'
 import { useAuth } from '../AuthContext'
 import { useTheme } from '../ThemeContext'
 import BrandLogo from './BrandLogo'
@@ -15,6 +15,7 @@ export default function Layout() {
   const primaryLinks = [
     { to: '/', label: 'Inicio', end: true, Icon: LayoutDashboard },
     { to: '/equipos', label: 'Equipos', end: false, Icon: Smartphone },
+    { to: '/estados', label: 'Estado de equipos', end: true, Icon: ClipboardList },
     { to: '/equipos/nuevo', label: 'Nuevo ingreso', end: true, Icon: ClipboardPlus },
   ]
 

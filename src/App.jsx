@@ -5,6 +5,7 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Devices from './pages/Devices'
+import DeviceStatuses from './pages/DeviceStatuses'
 import DeviceForm from './pages/DeviceForm'
 import DeviceDetail from './pages/DeviceDetail'
 import Clients from './pages/Clients'
@@ -39,6 +40,7 @@ export default function App() {
             >
               <Route path="/" element={<Dashboard />} />
               <Route path="/equipos" element={<Devices />} />
+              <Route path="/estados" element={<DeviceStatuses />} />
               <Route path="/equipos/nuevo" element={<DeviceForm />} />
               <Route path="/equipos/:id" element={<DeviceDetail />} />
               <Route path="/clientes" element={<Clients />} />
