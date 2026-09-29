@@ -1,10 +1,10 @@
 # Despliegue en Vercel
 
-El frontend y el backend se despliegan como dos proyectos Vercel desde el mismo repositorio.
+El frontend y el backend viven en repositorios Git separados y se despliegan como dos proyectos Vercel.
 
 ## Backend
 
-1. Crea un proyecto Vercel y configura **Root Directory** como `Servback`.
+1. Importa `Enzy-1/servback` como un proyecto Vercel y deja **Root Directory** en `.` (raíz del repositorio).
 2. Usa la detección automática de Express; `src/index.js` exporta la aplicación para Vercel Functions.
 3. Crea/conecta una base MongoDB Atlas y un Vercel Blob store **Private** al proyecto del backend. La conexión de Blob debe proporcionar `BLOB_READ_WRITE_TOKEN`; no lo pongas en el proyecto frontend.
 4. Configura estas variables en Production (y Preview si se usa):
@@ -24,7 +24,7 @@ Atlas debe permitir conexiones desde Vercel. `ADMIN_PASSWORD` solo se usa si tod
 
 ## Frontend
 
-1. Crea otro proyecto Vercel desde el mismo repositorio y configura **Root Directory** como `Servfront`.
+1. Importa `Enzy-1/servfront` como otro proyecto Vercel y deja **Root Directory** en `.` (raíz del repositorio).
 2. Usa el preset Vite, el comando `npm run build` y la carpeta de salida `dist`.
 3. Configura las variables antes del build:
 
