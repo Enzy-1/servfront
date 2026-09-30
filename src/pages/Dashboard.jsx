@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
-import { useAuth } from '../AuthContext'
-import { STATUS_LABELS, formatMoney } from '../status'
+import { STATUS_LABELS, STATUS_ORDER, formatMoney } from '../status'
+
+const DashboardCharts = lazy(() => import('../components/DashboardCharts'))
+
+function percentage(value, total) {
+  return total ? Math.round((value / total) * 100) : 0
+}
 
 export default function Dashboard() {
-  const { isAdmin } = useAuth()
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
 
@@ -18,15 +22,21 @@ export default function Dashboard() {
   if (error) return <div className="alert">{error}</div>
   if (!data) return <p className="muted">Cargando dashboard…</p>
 
+  const inProgress = ['recibido', 'diagnostico', 'esperando_piezas', 'en_reparacion']
+    .reduce((total, status) => total + (data.byStatus[status] || 0), 0)
+  const statusData = STATUS_ORDER.map((status) => ({
+    status,
+    name: STATUS_LABELS[status],
+    count: data.byStatus[status] || 0,
+    percent: percentage(data.byStatus[status] || 0, data.total),
+  }))
   const cards = [
-    { label: 'Celulares en taller', value: data.total },
-    { label: 'En proceso', value: data.active },
-    { label: 'Listos para entregar', value: data.ready },
-    { label: 'Clientes', value: data.clients },
-    { label: 'En reparación', value: data.inRepair },
-    { label: 'Esperando piezas', value: data.waitingParts },
-    { label: 'Entregados del mes', value: data.deliveredThisMonth },
-    { label: 'Ingresos del mes', value: formatMoney(data.revenue) },
+    { label: 'Equipos registrados', value: data.total, detail: 'Total histórico' },
+    { label: 'En proceso', value: inProgress, detail: `${percentage(inProgress, data.total)}% del total` },
+    { label: 'Listos para entregar', value: data.ready, detail: `${percentage(data.ready, data.total)}% del total` },
+    { label: 'Entregados este mes', value: data.deliveredThisMonth, detail: 'Según historial de entrega' },
+    { label: 'Clientes', value: data.clients, detail: 'Clientes registrados' },
+    { label: 'Ingresos del mes', value: formatMoney(data.revenue), detail: 'Equipos entregados' },
   ]
 
   return (
@@ -46,17 +56,27 @@ export default function Dashboard() {
           <article key={card.label} className="stat-card">
             <p>{card.label}</p>
             <strong>{card.value}</strong>
+            <small>{card.detail}</small>
           </article>
         ))}
       </section>
 
-      <section className="panel">
-        <h2>Proceso actual</h2>
+      <Suspense fallback={<section className="panel dashboard-chart-loading">Cargando gráficas…</section>}>
+        <DashboardCharts data={data} statusData={statusData} />
+      </Suspense>
+
+      <section className="panel dashboard-process-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <h2>Proceso actual</h2>
+            <p className="muted">Conteo y participación por estado</p>
+          </div>
+        </div>
         <div className="status-grid">
-          {Object.entries(data.byStatus).map(([key, count]) => (
-            <Link key={key} to={`/equipos?status=${key}`} className="status-chip">
-              <span>{STATUS_LABELS[key]}</span>
-              <b>{count}</b>
+          {statusData.map(({ status, name, count, percent }) => (
+            <Link key={status} to={`/equipos?status=${status}`} className="status-chip">
+              <span>{name}</span>
+              <span className="dashboard-status-value"><b>{count}</b><small>{percent}%</small></span>
             </Link>
           ))}
         </div>
