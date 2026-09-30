@@ -7,11 +7,17 @@ import { createDeviceReceiptPdf } from '../deviceReceipt'
 import { STATUS_LABELS, STATUS_ORDER, formatDate, formatMoney } from '../status'
 
 export default function DeviceDetail() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, user } = useAuth()
+  const canManageService = isAdmin || user?.role === 'tecnico'
   const location = useLocation()
   const { id } = useParams()
   const navigate = useNavigate()
   const [device, setDevice] = useState(null)
+  const [technicians, setTechnicians] = useState([])
+  const [partsCatalog, setPartsCatalog] = useState([])
+  const [assignedTo, setAssignedTo] = useState('')
+  const [selectedPart, setSelectedPart] = useState('')
+  const [partQuantity, setPartQuantity] = useState('1')
   const [imageUrls, setImageUrls] = useState([])
   const [receiptUrl, setReceiptUrl] = useState('')
   const [receiptFile, setReceiptFile] = useState(null)
@@ -22,7 +28,15 @@ export default function DeviceDetail() {
   const [shareMessage, setShareMessage] = useState('')
   const [status, setStatus] = useState('')
   const [statusNote, setStatusNote] = useState('')
+  const [estimatedCost, setEstimatedCost] = useState('')
   const [finalCost, setFinalCost] = useState('')
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('efectivo')
+  const [approvalLink, setApprovalLink] = useState('')
+  const [approvalLoading, setApprovalLoading] = useState(false)
+  const [trackingLink, setTrackingLink] = useState('')
+  const [trackingLoading, setTrackingLoading] = useState(false)
+  const [statusNotice, setStatusNotice] = useState(null)
   const [error, setError] = useState('')
   const receiptGenerationRequested = useRef(false)
   const receiptUrlRef = useRef('')
@@ -63,7 +77,9 @@ export default function DeviceDetail() {
       .then((data) => {
         if (cancelled) return
         setDevice(data)
+        setAssignedTo(data.assignedTo?._id || '')
         setStatus(data.status)
+        setEstimatedCost(data.estimatedCost ?? '')
         setFinalCost(data.finalCost || '')
         if (!data.images?.length) setImageUrls([])
         if (location.state?.reviewReceipt && !receiptGenerationRequested.current) {
@@ -80,6 +96,20 @@ export default function DeviceDetail() {
       cancelled = true
     }
   }, [generateReceipt, id, location.state?.reviewReceipt])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    api('/users/technicians')
+      .then(setTechnicians)
+      .catch((err) => setError(err.message))
+  }, [isAdmin])
+
+  useEffect(() => {
+    if (!canManageService) return
+    api('/parts')
+      .then(setPartsCatalog)
+      .catch((err) => setError(err.message))
+  }, [canManageService])
 
   useEffect(() => () => {
     if (receiptUrlRef.current) URL.revokeObjectURL(receiptUrlRef.current)
@@ -161,16 +191,124 @@ export default function DeviceDetail() {
   async function updateStatus(e) {
     e.preventDefault()
     setError('')
+    const note = statusNote.trim()
     try {
       const updated = await api(`/devices/${id}`, {
         method: 'PUT',
-        body: JSON.stringify({ status, statusNote, finalCost }),
+        body: JSON.stringify({ status, statusNote, estimatedCost, finalCost }),
       })
       setDevice(updated)
       setStatusNote('')
+      try {
+        const result = await api(`/devices/${id}/tracking-link`, { method: 'POST' })
+        setStatusNotice({
+          status: updated.status,
+          note,
+          link: `${window.location.origin}/seguimiento/${result.token}`,
+        })
+      } catch (err) {
+        setError(`Proceso guardado. No se pudo preparar el aviso: ${err.message}`)
+      }
     } catch (err) {
       setError(err.message)
     }
+  }
+
+  async function updateAssignment(e) {
+    e.preventDefault()
+    setError('')
+    try {
+      const updated = await api(`/devices/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ assignedTo }),
+      })
+      setDevice(updated)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function recordPartUsage(e) {
+    e.preventDefault()
+    setError('')
+    try {
+      const result = await api(`/parts/${selectedPart}/consume`, {
+        method: 'POST',
+        body: JSON.stringify({ deviceId: id, quantity: partQuantity }),
+      })
+      setDevice((current) => ({ ...current, partsUsed: result.partsUsed }))
+      setPartsCatalog((current) => current.map((part) => (part._id === result.part._id ? result.part : part)))
+      setPartQuantity('1')
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function receivePayment(e) {
+    e.preventDefault()
+    setError('')
+    try {
+      const result = await api(`/devices/${id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ amount: paymentAmount, method: paymentMethod }),
+      })
+      setDevice((current) => ({ ...current, payments: result.payments }))
+      setPaymentAmount('')
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function createApprovalRequest() {
+    setApprovalLoading(true)
+    setError('')
+    try {
+      const result = await api(`/devices/${id}/approval`, { method: 'POST' })
+      setApprovalLink(`${window.location.origin}/aprobar/${result.token}`)
+      setDevice((current) => ({
+        ...current,
+        estimateApproval: { ...current.estimateApproval, status: 'pending' },
+      }))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setApprovalLoading(false)
+    }
+  }
+
+  function approvalWhatsAppUrl() {
+    const phoneDigits = String(device.client?.phone || '').replace(/\D/g, '')
+    const phone = phoneDigits.length === 10 ? `57${phoneDigits}` : phoneDigits
+    const message = `Hola, ${device.ticket} (${device.brand} ${device.model}): el presupuesto estimado es ${formatMoney(device.estimatedCost)}. Revisa el diagnóstico y responde aquí: ${approvalLink}`
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+  }
+
+  async function createTrackingLink() {
+    setTrackingLoading(true)
+    setError('')
+    try {
+      const result = await api(`/devices/${id}/tracking-link`, { method: 'POST' })
+      setTrackingLink(`${window.location.origin}/seguimiento/${result.token}`)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setTrackingLoading(false)
+    }
+  }
+
+  function trackingWhatsAppUrl() {
+    const phoneDigits = String(device.client?.phone || '').replace(/\D/g, '')
+    const phone = phoneDigits.length === 10 ? `57${phoneDigits}` : phoneDigits
+    const message = `Hola, consulta el avance de tu equipo ${device.ticket} aquí: ${trackingLink}`
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+  }
+
+  function statusWhatsAppUrl() {
+    const phoneDigits = String(device.client?.phone || '').replace(/\D/g, '')
+    const phone = phoneDigits.length === 10 ? `57${phoneDigits}` : phoneDigits
+    const note = statusNotice.note ? `\nNota: ${statusNotice.note}` : ''
+    const message = `Hola, actualizamos tu equipo ${device.ticket} (${device.brand} ${device.model}). Estado: ${STATUS_LABELS[statusNotice.status]}.${note}\nConsulta el avance: ${statusNotice.link}`
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
   }
 
   async function remove() {
@@ -181,6 +319,8 @@ export default function DeviceDetail() {
 
   if (error && !device) return <div className="alert">{error}</div>
   if (!device) return <p className="muted">Cargando…</p>
+  const totalPaid = (device.payments || []).reduce((total, payment) => total + Number(payment.amount || 0), 0)
+  const outstanding = Math.max(0, Number(device.finalCost || 0) - totalPaid)
 
   return (
     <div>
@@ -294,15 +434,34 @@ export default function DeviceDetail() {
             </div>
             <div>
               <dt>Técnico</dt>
-              <dd>{device.technician || 'Sin asignar'}</dd>
+              <dd>{device.assignedTo?.name || device.technician || 'Sin asignar'}</dd>
             </div>
             <div>
               <dt>Costo estimado</dt>
               <dd>{formatMoney(device.estimatedCost)}</dd>
             </div>
             <div>
+              <dt>Aprobación del presupuesto</dt>
+              <dd>
+                {{
+                  not_requested: 'Sin solicitar',
+                  pending: 'Pendiente',
+                  approved: 'Aprobado',
+                  rejected: 'Rechazado',
+                }[device.estimateApproval?.status || 'not_requested']}
+              </dd>
+            </div>
+            <div>
               <dt>Costo final</dt>
               <dd>{formatMoney(device.finalCost)}</dd>
+            </div>
+            <div>
+              <dt>Total pagado</dt>
+              <dd>{formatMoney(totalPaid)}</dd>
+            </div>
+            <div>
+              <dt>Saldo pendiente</dt>
+              <dd>{formatMoney(outstanding)}</dd>
             </div>
             <div>
               <dt>Entrega estimada</dt>
@@ -314,6 +473,56 @@ export default function DeviceDetail() {
             </div>
           </dl>
           {device.notes ? <p className="notes">{device.notes}</p> : null}
+          {device.partsUsed?.length ? (
+            <div className="parts-used">
+              <h3>Repuestos utilizados</h3>
+              <table>
+                <thead><tr><th>Repuesto</th><th>Cant.</th><th>Costo</th><th>Registró</th></tr></thead>
+                <tbody>
+                  {device.partsUsed.map((usage, index) => (
+                    <tr key={`${usage.part}-${usage.usedAt}-${index}`}>
+                      <td>{usage.name}</td>
+                      <td>{usage.quantity}</td>
+                      <td>{formatMoney(usage.unitCost * usage.quantity)}</td>
+                      <td>{usage.usedBy || '—'}<br /><span className="muted">{formatDate(usage.usedAt)}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {device.payments?.length ? (
+            <div className="parts-used">
+              <h3>Pagos recibidos</h3>
+              <table>
+                <thead><tr><th>Fecha</th><th>Método</th><th>Valor</th><th>Recibió</th></tr></thead>
+                <tbody>
+                  {device.payments.map((payment, index) => (
+                    <tr key={`${payment.receivedAt}-${index}`}>
+                      <td>{formatDate(payment.receivedAt)}</td>
+                      <td>{payment.method}</td>
+                      <td>{formatMoney(payment.amount)}</td>
+                      <td>{payment.receivedBy || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {isAdmin ? (
+            <form className="stack assignment-form" onSubmit={updateAssignment}>
+              <label>
+                Técnico asignado
+                <select value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)}>
+                  <option value="">Sin asignar</option>
+                  {technicians.map((technician) => (
+                    <option key={technician.id} value={technician.id}>{technician.name}</option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit">Guardar asignación</button>
+            </form>
+          ) : null}
           {isAdmin ? (
             <button type="button" className="danger" onClick={remove}>
               Eliminar registro
@@ -321,9 +530,69 @@ export default function DeviceDetail() {
           ) : null}
         </section>
 
-        {isAdmin ? (
+        {canManageService ? (
           <section className="panel">
             <h2>Actualizar proceso</h2>
+            {outstanding > 0 && device.status !== 'cancelado' ? (
+              <form className="stack payment-form" onSubmit={receivePayment}>
+                <h3>Registrar abono</h3>
+                <label>
+                  Valor
+                  <input type="number" min="1" max={outstanding} step="1" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} required />
+                </label>
+                <label>
+                  Método
+                  <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="tarjeta">Tarjeta</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </label>
+                <button type="submit" disabled={!paymentAmount || Number(paymentAmount) > outstanding}>Registrar pago</button>
+              </form>
+            ) : null}
+            {!['entregado', 'cancelado'].includes(device.status) ? (
+              <form className="stack parts-usage-form" onSubmit={recordPartUsage}>
+                <h3>Registrar repuesto usado</h3>
+                <label>
+                  Repuesto disponible
+                  <select required value={selectedPart} onChange={(event) => setSelectedPart(event.target.value)}>
+                    <option value="">Seleccionar repuesto</option>
+                    {partsCatalog.filter((part) => part.stock > 0).map((part) => (
+                      <option key={part._id} value={part._id}>{part.name} · {part.stock} disponibles</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Cantidad
+                  <input type="number" min="1" step="1" value={partQuantity} onChange={(event) => setPartQuantity(event.target.value)} required />
+                </label>
+                <button type="submit" disabled={!selectedPart}>Descontar del inventario</button>
+              </form>
+            ) : null}
+            <div className="approval-request">
+              <button type="button" className="ghost" disabled={trackingLoading} onClick={createTrackingLink}>
+                {trackingLoading ? 'Preparando enlace…' : 'Crear enlace de seguimiento'}
+              </button>
+              {trackingLink ? (
+                <a className="btn" href={trackingWhatsAppUrl()} target="_blank" rel="noreferrer">
+                  Compartir seguimiento por WhatsApp
+                </a>
+              ) : null}
+            </div>
+            {Number(device.estimatedCost) > 0 ? (
+              <div className="approval-request">
+                <button type="button" className="ghost" disabled={approvalLoading} onClick={createApprovalRequest}>
+                  {approvalLoading ? 'Preparando enlace…' : 'Solicitar aprobación del presupuesto'}
+                </button>
+                {approvalLink ? (
+                  <a className="btn" href={approvalWhatsAppUrl()} target="_blank" rel="noreferrer">
+                    Enviar solicitud por WhatsApp
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
             <form className="stack" onSubmit={updateStatus}>
               <label>
                 Estado
@@ -334,6 +603,10 @@ export default function DeviceDetail() {
                     </option>
                   ))}
                 </select>
+              </label>
+              <label>
+                Costo estimado
+                <input type="number" min="0" value={estimatedCost} onChange={(e) => setEstimatedCost(e.target.value)} />
               </label>
               <label>
                 Costo final
@@ -350,6 +623,13 @@ export default function DeviceDetail() {
               </label>
               <button type="submit">Guardar proceso</button>
             </form>
+            {statusNotice ? (
+              <p className="status-notice-link">
+                <a className="btn" href={statusWhatsAppUrl()} target="_blank" rel="noreferrer">
+                  Enviar actualización por WhatsApp
+                </a>
+              </p>
+            ) : null}
 
             <h3>Historial</h3>
             <ol className="timeline">

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { ClipboardList, ClipboardPlus, ContactRound, LayoutDashboard, LogOut, PanelLeftClose, PanelLeftOpen, Smartphone, UsersRound } from 'lucide-react'
+import { ClipboardList, ClipboardPlus, ContactRound, Download, History, LayoutDashboard, LogOut, PackageOpen, PanelLeftClose, PanelLeftOpen, Smartphone, UsersRound } from 'lucide-react'
 import { useAuth } from '../AuthContext'
 import { useTheme } from '../ThemeContext'
 import BrandLogo from './BrandLogo'
@@ -17,11 +17,16 @@ export default function Layout() {
     { to: '/equipos', label: 'Equipos', end: false, Icon: Smartphone },
     { to: '/estados', label: 'Estado de equipos', end: true, Icon: ClipboardList },
     { to: '/equipos/nuevo', label: 'Nuevo ingreso', end: true, Icon: ClipboardPlus },
+    { to: '/repuestos', label: 'Repuestos', end: true, Icon: PackageOpen },
   ]
 
   const secondaryLinks = [
     { to: '/clientes', label: 'Clientes', end: false, Icon: ContactRound },
-    ...(isAdmin ? [{ to: '/usuarios', label: 'Usuarios', end: false, Icon: UsersRound }] : []),
+    ...(isAdmin ? [
+      { to: '/usuarios', label: 'Usuarios', end: false, Icon: UsersRound },
+      { to: '/auditoria', label: 'Auditoría', end: false, Icon: History },
+      { to: '/reportes', label: 'Reportes', end: false, Icon: Download },
+    ] : []),
   ]
 
   function onLogout() {
@@ -88,7 +93,7 @@ export default function Layout() {
             </span>
             <span className="sidebar-user-copy">
               <strong>{user?.name}</strong>
-              <span>{isAdmin ? 'Administrador' : 'Consulta'}</span>
+              <span>{isAdmin ? 'Administrador' : 'Técnico'}</span>
             </span>
           </div>
           <button type="button" className="ghost logout-button" onClick={onLogout} aria-label="Cerrar sesión" title="Cerrar sesión">

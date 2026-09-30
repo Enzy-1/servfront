@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { useAuth } from '../AuthContext'
 
 const empty = { name: '', email: '', password: '', role: 'tecnico' }
 
 export default function Users() {
+  const { user: currentUser } = useAuth()
   const [users, setUsers] = useState([])
   const [form, setForm] = useState(empty)
   const [error, setError] = useState('')
   const [ok, setOk] = useState('')
   const [saving, setSaving] = useState(false)
+  const activeAdminCount = users.filter((user) => user.role === 'admin' && user.active).length
 
   function load() {
     api('/users')
@@ -37,11 +40,15 @@ export default function Users() {
     }
   }
 
-  async function remove(id) {
-    if (!confirm('¿Eliminar este usuario?')) return
+  async function setActive(id, active) {
     setError('')
+    setOk('')
     try {
-      await api(`/users/${id}`, { method: 'DELETE' })
+      await api(`/users/${id}/active`, {
+        method: 'PATCH',
+        body: JSON.stringify({ active }),
+      })
+      setOk(active ? 'Cuenta activada.' : 'Cuenta desactivada. Sus sesiones existentes quedan invalidadas.')
       load()
     } catch (err) {
       setError(err.message)
@@ -53,7 +60,7 @@ export default function Users() {
       <header className="page-head">
         <div>
           <h1>Usuarios</h1>
-          <p className="muted">El administrador da de alta cuentas para consultar el taller.</p>
+          <p className="muted">El administrador da de alta cuentas para operar el taller.</p>
         </div>
       </header>
 
@@ -89,7 +96,7 @@ export default function Users() {
           <label>
             Rol
             <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              <option value="tecnico">Consulta (dashboard, clientes y equipos)</option>
+              <option value="tecnico">Técnico (ingreso y manejo de equipos)</option>
               <option value="admin">Administrador</option>
             </select>
           </label>
@@ -108,7 +115,8 @@ export default function Users() {
                 <th>Nombre</th>
                 <th>Correo</th>
                 <th>Rol</th>
-                <th></th>
+                <th>Estado</th>
+                <th>Acción</th>
               </tr>
             </thead>
             <tbody>
@@ -116,10 +124,18 @@ export default function Users() {
                 <tr key={u._id || u.id}>
                   <td>{u.name}</td>
                   <td>{u.email}</td>
-                  <td>{u.role === 'admin' ? 'Administrador' : 'Consulta'}</td>
+                  <td>{u.role === 'admin' ? 'Administrador' : 'Técnico'}</td>
                   <td>
-                    <button type="button" className="danger" onClick={() => remove(u._id || u.id)}>
-                      Eliminar
+                    {u.active ? 'Activo' : 'Desactivado'}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className={u.active ? 'ghost' : ''}
+                      disabled={u.id === currentUser?.id || (u.role === 'admin' && u.active && activeAdminCount === 1)}
+                      onClick={() => setActive(u.id, !u.active)}
+                    >
+                      {u.active ? 'Desactivar' : 'Activar'}
                     </button>
                   </td>
                 </tr>

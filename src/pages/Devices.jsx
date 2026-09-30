@@ -10,15 +10,17 @@ export default function Devices() {
   const [items, setItems] = useState([])
   const [q, setQ] = useState(params.get('q') || '')
   const status = params.get('status') || ''
+  const mine = params.get('mine') === '1'
   const [error, setError] = useState('')
 
   const query = useMemo(() => {
     const p = new URLSearchParams()
     if (status) p.set('status', status)
+    if (mine) p.set('mine', '1')
     if (params.get('q')) p.set('q', params.get('q'))
     const s = p.toString()
     return s ? `?${s}` : ''
-  }, [status, params])
+  }, [mine, status, params])
 
   useEffect(() => {
     api(`/devices${query}`)
@@ -41,6 +43,13 @@ export default function Devices() {
     setParams(next)
   }
 
+  function toggleMine() {
+    const next = new URLSearchParams(params)
+    if (mine) next.delete('mine')
+    else next.set('mine', '1')
+    setParams(next)
+  }
+
   return (
     <div>
       <header className="page-head">
@@ -52,9 +61,14 @@ export default function Devices() {
               : 'Consulta de celulares que están en el taller.'}
           </p>
         </div>
-        <Link className="btn" to="/equipos/nuevo">
-          Nuevo ingreso
-        </Link>
+        <div className="device-list-actions">
+          {!isAdmin ? (
+            <button type="button" className={mine ? 'btn' : 'ghost'} onClick={toggleMine}>
+              {mine ? 'Ver todos' : 'Mis equipos'}
+            </button>
+          ) : null}
+          <Link className="btn" to="/equipos/nuevo">Nuevo ingreso</Link>
+        </div>
       </header>
 
       <form className="toolbar" onSubmit={applySearch}>
@@ -110,7 +124,7 @@ export default function Devices() {
                   <td>
                     <span className={`badge ${item.status}`}>{STATUS_LABELS[item.status]}</span>
                   </td>
-                  <td>{item.technician || '—'}</td>
+                  <td>{item.assignedTo?.name || item.technician || '—'}</td>
                   <td>{formatDate(item.createdAt)}</td>
                 </tr>
               ))

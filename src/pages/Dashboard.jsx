@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
+import { useAuth } from '../AuthContext'
 import { STATUS_LABELS, STATUS_ORDER, formatMoney } from '../status'
 
 const DashboardCharts = lazy(() => import('../components/DashboardCharts'))
@@ -10,14 +11,24 @@ function percentage(value, total) {
 }
 
 export default function Dashboard() {
+  const { isAdmin } = useAuth()
   const [data, setData] = useState(null)
+  const [adminOverview, setAdminOverview] = useState(null)
   const [error, setError] = useState('')
+  const [adminError, setAdminError] = useState('')
 
   useEffect(() => {
     api('/dashboard')
       .then(setData)
       .catch((err) => setError(err.message))
   }, [])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    api('/dashboard/admin-overview')
+      .then(setAdminOverview)
+      .catch((err) => setAdminError(err.message))
+  }, [isAdmin])
 
   if (error) return <div className="alert">{error}</div>
   if (!data) return <p className="muted">Cargando dashboard…</p>
@@ -38,6 +49,13 @@ export default function Dashboard() {
     { label: 'Clientes', value: data.clients, detail: 'Clientes registrados' },
     { label: 'Ingresos del mes', value: formatMoney(data.revenue), detail: 'Equipos entregados' },
   ]
+  const adminAlerts = adminOverview ? [
+    { key: 'unassigned', label: 'Sin técnico asignado', items: adminOverview.alerts.unassigned.items },
+    { key: 'pendingApprovals', label: 'Presupuestos pendientes', items: adminOverview.alerts.pendingApprovals.items },
+    { key: 'overdue', label: 'Fuera de fecha estimada', items: adminOverview.alerts.overdue.items },
+    { key: 'ready', label: 'Listos para entregar', items: adminOverview.alerts.ready.items },
+    { key: 'lowStock', label: 'Repuestos bajo mínimo', items: adminOverview.alerts.lowStock.items, parts: true },
+  ] : []
 
   return (
     <div>
@@ -60,6 +78,74 @@ export default function Dashboard() {
           </article>
         ))}
       </section>
+
+      {isAdmin ? (
+        <>
+          {adminError ? <div className="alert" role="alert">{adminError}</div> : null}
+          {adminOverview ? (
+            <>
+              <section className="panel admin-operations-panel">
+                <div className="panel-head">
+                  <div>
+                    <h2>Requiere atención</h2>
+                    <p className="muted">Alertas operativas actualizadas al cargar el dashboard.</p>
+                  </div>
+                  <Link to="/reportes">Ver reportes</Link>
+                </div>
+                <div className="admin-alert-grid">
+                  {adminAlerts.map((alert) => (
+                    <section className="admin-alert-group" key={alert.key}>
+                      <h3>{alert.label} <span>{adminOverview.alerts[alert.key].count}</span></h3>
+                      {alert.items.length ? (
+                        <ul>
+                          {alert.items.map((item) => (
+                            <li key={item._id || item.sku}>
+                              {alert.parts ? (
+                                <Link to="/repuestos">{item.name} · {item.stock}/{item.minimumStock}</Link>
+                              ) : (
+                                <Link to={`/equipos/${item._id}`}>{item.ticket} · {item.brand} {item.model}</Link>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="muted">Sin pendientes.</p>}
+                    </section>
+                  ))}
+                </div>
+              </section>
+
+              <section className="panel admin-financial-panel">
+                <div className="panel-head">
+                  <h2>Finanzas y carga del taller</h2>
+                  <Link to="/reportes">Exportar datos</Link>
+                </div>
+                <div className="cards admin-financial-cards">
+                  <article className="stat-card"><p>Pagos recibidos</p><strong>{formatMoney(adminOverview.financial.collected)}</strong></article>
+                  <article className="stat-card"><p>Saldo pendiente</p><strong>{formatMoney(adminOverview.financial.outstanding)}</strong></article>
+                  <article className="stat-card"><p>Costo de repuestos</p><strong>{formatMoney(adminOverview.financial.partsCost)}</strong></article>
+                  <article className="stat-card"><p>Margen antes de otros costos</p><strong>{formatMoney(adminOverview.financial.expectedMargin)}</strong></article>
+                </div>
+                <p className="muted admin-financial-note">El margen no descuenta mano de obra, impuestos ni otros gastos.</p>
+                <div className="admin-workload">
+                  <h3>Carga por técnico</h3>
+                  <table>
+                    <thead><tr><th>Técnico</th><th>Equipos activos</th><th>Listos</th></tr></thead>
+                    <tbody>
+                      {adminOverview.workload.length ? adminOverview.workload.map((technician) => (
+                        <tr key={technician.id}>
+                          <td><Link to={`/equipos?q=${encodeURIComponent(technician.name)}`}>{technician.name}</Link></td>
+                          <td>{technician.active}</td>
+                          <td>{technician.ready}</td>
+                        </tr>
+                      )) : <tr><td colSpan={3} className="muted">No hay técnicos activos.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
+          ) : !adminError ? <p className="muted">Cargando resumen administrativo…</p> : null}
+        </>
+      ) : null}
 
       <Suspense fallback={<section className="panel dashboard-chart-loading">Cargando gráficas…</section>}>
         <DashboardCharts data={data} statusData={statusData} />

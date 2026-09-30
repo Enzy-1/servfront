@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ImagePlus, X } from 'lucide-react'
 import { upload } from '@vercel/blob/client'
@@ -12,6 +12,7 @@ const empty = {
   color: '',
   issue: '',
   technician: '',
+  assignedTo: '',
   estimatedCost: '',
   notes: '',
   estimatedReady: '',
@@ -29,12 +30,12 @@ const USE_BLOB_UPLOADS = import.meta.env.PROD || import.meta.env.VITE_UPLOAD_MOD
 export default function DeviceForm() {
   const navigate = useNavigate()
   const [clients, setClients] = useState([])
+  const [technicians, setTechnicians] = useState([])
   const [clientQuery, setClientQuery] = useState('')
   const [form, setForm] = useState(empty)
-  const [imageFiles, setImageFiles] = useState([])
-  const [imagePreviews, setImagePreviews] = useState([])
+  const [imageItems, setImageItems] = useState([])
+  const imageUrls = useRef(new Set())
   const [imageError, setImageError] = useState('')
-  const [otherTechnician, setOtherTechnician] = useState('')
   const [newClient, setNewClient] = useState({ name: '', phone: '', email: '', document: '' })
   const [showClientModal, setShowClientModal] = useState(false)
   const [error, setError] = useState('')
@@ -45,10 +46,15 @@ export default function DeviceForm() {
   }, [])
 
   useEffect(() => {
-    const previews = imageFiles.map((file) => ({ file, url: URL.createObjectURL(file) }))
-    setImagePreviews(previews)
-    return () => previews.forEach(({ url }) => URL.revokeObjectURL(url))
-  }, [imageFiles])
+    api('/users/technicians').then(setTechnicians).catch((err) => setError(err.message))
+  }, [])
+
+  const imageFiles = imageItems.map(({ file }) => file)
+  const imagePreviews = imageItems
+
+  useEffect(() => () => {
+    imageUrls.current.forEach((url) => URL.revokeObjectURL(url))
+  }, [])
 
   function setField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -73,12 +79,22 @@ export default function DeviceForm() {
       return
     }
 
-    setImageFiles((current) => [...current, ...selected])
+    const items = selected.map((file) => {
+      const url = URL.createObjectURL(file)
+      imageUrls.current.add(url)
+      return { file, url }
+    })
+    setImageItems((current) => [...current, ...items])
     setImageError('')
   }
 
   function removeImage(index) {
-    setImageFiles((current) => current.filter((_, imageIndex) => imageIndex !== index))
+    const removed = imageItems[index]
+    if (removed) {
+      URL.revokeObjectURL(removed.url)
+      imageUrls.current.delete(removed.url)
+    }
+    setImageItems((current) => current.filter((_, imageIndex) => imageIndex !== index))
     setImageError('')
   }
 
@@ -112,8 +128,8 @@ export default function DeviceForm() {
     try {
       const payload = {
         ...form,
+        technician: technicians.find((technician) => technician.id === form.assignedTo)?.name || '',
         estimatedCost: Number(form.estimatedCost.replace(/\./g, '')) || 0,
-        technician: form.technician === 'Otro' ? otherTechnician.trim() : form.technician,
       }
       let created
 
@@ -316,31 +332,13 @@ export default function DeviceForm() {
             </label>
             <label>
               Técnico asignado
-              <select
-                value={form.technician === 'Otro' || (form.technician && !['MyK', 'JH', 'Fox'].includes(form.technician)) ? 'Otro' : form.technician}
-                onChange={(e) => {
-                  setField('technician', e.target.value)
-                  if (e.target.value !== 'Otro') setOtherTechnician('')
-                }}
-              >
+              <select value={form.assignedTo} onChange={(e) => setField('assignedTo', e.target.value)}>
                 <option value="">Sin asignar</option>
-                <option value="MyK">MyK</option>
-                <option value="JH">JH</option>
-                <option value="Fox">Fox</option>
-                <option value="Otro">Otro</option>
+                {technicians.map((technician) => (
+                  <option key={technician.id} value={technician.id}>{technician.name}</option>
+                ))}
               </select>
             </label>
-            {form.technician === 'Otro' ? (
-              <label>
-                Escribe el nombre del técnico
-                <input
-                  value={otherTechnician}
-                  onChange={(e) => setOtherTechnician(e.target.value)}
-                  required
-                  maxLength={80}
-                />
-              </label>
-            ) : null}
             <label className="intake-cost-label">
               Costo estimado
               <span className="intake-currency-field">

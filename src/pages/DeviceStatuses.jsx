@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api'
+import { useAuth } from '../AuthContext'
 import { STATUS_LABELS, STATUS_ORDER, formatDate } from '../status'
 
 const ACTIVE_STATUSES = new Set(['recibido', 'diagnostico', 'esperando_piezas', 'en_reparacion'])
 
 export default function DeviceStatuses() {
+  const { isAdmin } = useAuth()
   const [items, setItems] = useState([])
   const [status, setStatus] = useState('')
   const [query, setQuery] = useState('')
@@ -109,11 +112,15 @@ export default function DeviceStatuses() {
           <tbody>
             {filteredItems.length ? filteredItems.map((item) => (
               <tr key={item._id}>
-                <td>{item.ticket}</td>
+                <td>
+                  {isAdmin || ACTIVE_STATUSES.has(item.status)
+                    ? <Link to={`/equipos/${item._id}`}>{item.ticket}</Link>
+                    : item.ticket}
+                </td>
                 <td>{item.brand} {item.model}</td>
                 <td>{item.client?.name || '—'}</td>
                 <td><span className={`badge ${item.status}`}>{STATUS_LABELS[item.status]}</span></td>
-                <td>{item.technician || '—'}</td>
+                <td>{item.assignedTo?.name || item.technician || '—'}</td>
                 <td>{formatDate(item.createdAt)}</td>
               </tr>
             )) : (
