@@ -50,6 +50,30 @@ export default function DashboardCharts({ data, statusData }) {
                     outerRadius="82%"
                     paddingAngle={2}
                     stroke="none"
+                    labelLine={false}
+                    label={({ cx, cy, midAngle, innerRadius, outerRadius, payload }) => {
+                      if (payload.percent < 6) return null
+                      const radius = innerRadius + (outerRadius - innerRadius) * 0.52
+                      const angle = (-midAngle * Math.PI) / 180
+                      const x = cx + radius * Math.cos(angle)
+                      const y = cy + radius * Math.sin(angle)
+                      return (
+                        <text
+                          x={x}
+                          y={y}
+                          fill="#fff"
+                          fontSize={11}
+                          fontWeight={700}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          paintOrder="stroke"
+                          stroke="rgba(0, 0, 0, 0.35)"
+                          strokeWidth={2}
+                        >
+                          {payload.percent}%
+                        </text>
+                      )
+                    }}
                   >
                     {statusWithData.map((entry) => (
                       <Cell key={entry.status} fill={STATUS_COLORS[entry.status]} />
